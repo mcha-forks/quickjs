@@ -583,6 +583,8 @@ jobs:
           - debug
           - release
         features:
+          - name: default
+            args: ""
           - name: libc
             args: -Dlibc=true
           - name: mimalloc
