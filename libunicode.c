@@ -29,7 +29,11 @@
 
 #include "cutils.h"
 #include "libunicode.h"
+#if __has_include(<codegen_libunicode-table.h>)
+#include <codegen_libunicode-table.h>
+#else
 #include "libunicode-table.h"
+#endif
 
 // note: stored as 4 bit tag, not much room left
 enum {

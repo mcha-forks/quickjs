@@ -123,6 +123,62 @@ if get_option('debug')
   )
 endif
 
+copy = find_program('cp', 'xcopy')
+
+qjs_parser = get_option('parser')
+
+qjs_c_args = ['-D_GNU_SOURCE']
+
+if host_system == 'windows'
+  qjs_c_args += ['-DWIN32_LEAN_AND_MEAN', '-D_WIN32_WINNT=0x0601']
+endif
+
+if not qjs_parser
+  qjs_c_args += ['-DQJS_DISABLE_PARSER']
+endif
+
+unicode_gen = executable(
+  'unicode_gen',
+  'cutils.c',
+  'unicode_gen.c',
+
+  c_args: qjs_c_args,
+  build_by_default: false,
+)
+
+unicode_table = custom_target(
+  'codegen_libunicode-table.h',
+  command: [
+    unicode_gen,
+    '@CURRENT_SOURCE_DIR@/unicode',
+    '@OUTPUT@',
+  ],
+  depend_files: files(
+    'unicode/CaseFolding.txt',
+    'unicode/CompositionExclusions.txt',
+    'unicode/DerivedCoreProperties.txt',
+    'unicode/DerivedNormalizationProps.txt',
+    'unicode/emoji-data.txt',
+    'unicode/NormalizationTest.txt',
+    'unicode/PropertyValueAliases.txt',
+    'unicode/PropList.txt',
+    'unicode/ScriptExtensions.txt',
+    'unicode/Scripts.txt',
+    'unicode/SpecialCasing.txt',
+    'unicode/UnicodeData.txt',
+  ),
+  output: 'codegen_libunicode-table.h',
+)
+
+run_target(
+  'libunicode-table.h',
+  command: [
+    copy,
+    unicode_table,
+    files('libunicode-table.h'),
+  ],
+)
+
 qjs_sys_deps = []
 
 m_dep = cc.find_library('m', required: false)
@@ -136,7 +192,7 @@ qjs_srcs = files(
   'libregexp.c',
   'libunicode.c',
   'quickjs.c',
-)
+) + unicode_table
 qjs_hdrs = files(
   'quickjs.h',
 )
@@ -147,18 +203,6 @@ qjs_libc_hdrs = files('quickjs-libc.h')
 
 if qjs_libc
   qjs_hdrs += qjs_libc_hdrs
-endif
-
-qjs_parser = get_option('parser')
-
-qjs_c_args = ['-D_GNU_SOURCE']
-
-if host_system == 'windows'
-  qjs_c_args += ['-DWIN32_LEAN_AND_MEAN', '-D_WIN32_WINNT=0x0601']
-endif
-
-if not qjs_parser
-  qjs_c_args += ['-DQJS_DISABLE_PARSER']
 endif
 
 qjs_libc_lib = static_library(
@@ -176,7 +220,7 @@ qjs_lib = library(
 
   # export public headers
   generator(
-    find_program('cp', 'xcopy'),
+    copy,
     output: ['@PLAINNAME@'],
     arguments: ['@INPUT@', '@OUTPUT@'],
   ).process(qjs_hdrs),
@@ -278,43 +322,7 @@ qjsc_exe = executable(
   install: true,
 )
 
-mimalloc_dep = []
-mimalloc_sys_dep = dependency('mimalloc', required: get_option('cli_mimalloc'))
-if mimalloc_sys_dep.found()
-  mimalloc_dep = declare_dependency(
-    dependencies: mimalloc_sys_dep,
-    compile_args: '-DQJS_USE_MIMALLOC',
-  )
-endif
-
-# QuickJS CLI
-qjs_exe_srcs = files(
-  'gen/repl.c',
-  'gen/standalone.c',
-  'qjs.c',
-)
-qjs_exe = executable(
-  'qjs',
-  qjs_exe_srcs,
-
-  c_args: qjs_c_args,
-  link_with: qjs_libc ? [] : qjs_libc_lib,
-  dependencies: [qjs_dep, mimalloc_dep],
-  export_dynamic: true,
-
-  install: true,
-)
-
 if meson.is_cross_build()
-  mimalloc_native_dep = []
-  mimalloc_sys_native_dep = dependency('mimalloc', required: get_option('cli_mimalloc'), native: true)
-  if mimalloc_sys_dep.found()
-    mimalloc_native_dep = declare_dependency(
-      dependencies: mimalloc_sys_native_dep,
-      compile_args: '-DQJS_USE_MIMALLOC',
-    )
-  endif
-
   qjs_sys_native_deps = [
     native_cc.find_library('m', required: false),
     dependency('threads', required: false, native: true),
@@ -349,6 +357,188 @@ if meson.is_cross_build()
       install: false,
     ),
   )
+else
+  meson.override_find_program('qjsc', qjsc_exe)
+endif
+
+# bytecode to c source code for builtin and examples
+qjsc_native_exe = find_program('qjsc')
+gen_repl_src = custom_target(
+  'gen_repl.c',
+  command: [
+    qjsc_native_exe,
+    '-ss',
+    '-o', '@OUTPUT@',
+    '-m',
+    '-n', 'repl.js',
+    '@INPUT@',
+  ],
+  input: files('repl.js'),
+  output: 'repl.c',
+)
+gen_standalone_src = custom_target(
+  'gen_standalone.c',
+  command: [
+    qjsc_native_exe,
+    '-ss',
+    '-o', '@OUTPUT@',
+    '-m',
+    '-n', 'standalone.js',
+    '@INPUT@',
+  ],
+  input: files('standalone.js'),
+  output: 'standalone.c',
+)
+gen_function_source_src = custom_target(
+  'gen_function_source.c',
+  command: [
+    qjsc_native_exe,
+    '-e',
+    '-o', '@OUTPUT@',
+    '-n', 'tests/function_source.js',
+    '@INPUT@',
+  ],
+  input: files('tests/function_source.js'),
+  output: 'function_source.c',
+)
+gen_hello_src = custom_target(
+  'gen_hello.c',
+  command: [
+    qjsc_native_exe,
+    '-e',
+    '-o', '@OUTPUT@',
+    '-n', 'examples/hello.js',
+    '@INPUT@',
+  ],
+  input: files('examples/hello.js'),
+  output: 'hello.c',
+)
+gen_hello_module_src = custom_target(
+  'gen_hello_module.c',
+  command: [
+    qjsc_native_exe,
+    '-e',
+    '-o', '@OUTPUT@',
+    '-m',
+    '-n', 'examples/hello_module.js',
+    '@INPUT@',
+  ],
+  input: files('examples/hello_module.js'),
+  output: 'hello_module.c',
+)
+gen_test_fib_src = custom_target(
+  'gen_test_fib.c',
+  command: [
+    qjsc_native_exe,
+    '-e',
+    '-o', '@OUTPUT@',
+    '-m',
+    '-n', 'examples/test_fib.js',
+    '@INPUT@',
+  ],
+  input: files('examples/test_fib.js'),
+  output: 'test_fib.c',
+)
+alias_target('codegen',
+  run_target(
+    'codegen_repl.c',
+    command: [
+      copy,
+      gen_repl_src,
+      files('gen/repl.c'),
+    ],
+  ),
+  run_target(
+    'codegen_standalone.c',
+    command: [
+      copy,
+      gen_standalone_src,
+      files('gen/standalone.c'),
+    ],
+  ),
+  run_target(
+    'codegen_function_source.c',
+    command: [
+      copy,
+      gen_function_source_src,
+      files('gen/function_source.c'),
+    ],
+  ),
+  run_target(
+    'codegen_hello.c',
+    command: [
+      copy,
+      gen_hello_src,
+      files('gen/hello.c'),
+    ],
+  ),
+  run_target(
+    'codegen_hello_module.c',
+    command: [
+      copy,
+      gen_hello_module_src,
+      files('gen/hello_module.c'),
+    ],
+  ),
+  run_target(
+    'codegen_test_fib.c',
+    command: [
+      copy,
+      gen_test_fib_src,
+      files('gen/test_fib.c'),
+    ],
+  ),
+  run_target(
+    'codegen_builtin-array-fromasync.h',
+    command: [
+      qjsc_native_exe,
+      '-C',
+      '-ss',
+      '-o', files('builtin-array-fromasync.h'),
+      '-n', 'builtin-array-fromasync.js',
+      files('builtin-array-fromasync.js'),
+    ],
+  ),
+)
+
+mimalloc_dep = []
+mimalloc_sys_dep = dependency('mimalloc', required: get_option('cli_mimalloc'))
+if mimalloc_sys_dep.found()
+  mimalloc_dep = declare_dependency(
+    dependencies: mimalloc_sys_dep,
+    compile_args: '-DQJS_USE_MIMALLOC',
+  )
+endif
+
+# QuickJS CLI
+qjs_exe_srcs = files(
+  'qjs.c',
+) + [
+  gen_repl_src,
+  gen_standalone_src
+]
+qjs_exe = executable(
+  'qjs',
+  qjs_exe_srcs,
+
+  c_args: qjs_c_args,
+  link_with: qjs_libc ? [] : qjs_libc_lib,
+  dependencies: [qjs_dep, mimalloc_dep],
+  export_dynamic: true,
+
+  install: true,
+)
+
+if meson.is_cross_build()
+  mimalloc_native_dep = []
+  mimalloc_sys_native_dep = dependency('mimalloc', required: get_option('cli_mimalloc'), native: true)
+  if mimalloc_sys_dep.found()
+    mimalloc_native_dep = declare_dependency(
+      dependencies: mimalloc_sys_native_dep,
+      compile_args: '-DQJS_USE_MIMALLOC',
+    )
+  endif
+
   meson.override_find_program(
     'qjs',
     executable(
@@ -366,7 +556,7 @@ if meson.is_cross_build()
     ),
   )
 else
-  meson.override_find_program('qjsc', qjsc_exe)
+  qjs_native_lib = qjs_lib
   meson.override_find_program('qjs', qjs_exe)
 endif
 
@@ -374,6 +564,8 @@ tests = get_option('tests').disable_auto_if(meson.is_subproject())
 examples = get_option('examples').disable_auto_if(meson.is_subproject())
 
 if tests.allowed()
+  broken_test = disabler()
+
   if host_system != 'emscripten'
     # Test262 runner
     run262_exe = executable(
@@ -493,7 +685,7 @@ if tests.allowed()
     'function_source',
     executable(
       'function_source',
-      'gen/function_source.c',
+      gen_function_source_src,
       qjs_libc_srcs,
 
       c_args: qjs_c_args,
@@ -501,110 +693,29 @@ if tests.allowed()
       build_by_default: false,
     ),
   )
+
+  test(
+    'unicode_gen_test',
+    executable(
+      'unicode_gen_test',
+      'cutils.c',
+      'unicode_gen.c',
+
+      c_args: qjs_c_args + ['-DUSE_TEST'],
+      build_by_default: false,
+    ),
+    depends: broken_test,
+    args: [
+      meson.current_source_dir() / 'unicode',
+    ],
+  )
+
 endif
-
-# Unicode generator
-unicode_gen = executable(
-  'unicode_gen',
-  'cutils.c',
-  'unicode_gen.c',
-
-  c_args: qjs_c_args,
-  build_by_default: false,
-)
-
-run_target(
-  'libunicode-table.h',
-  command: [
-    unicode_gen,
-    meson.current_source_dir() / 'unicode',
-    files('libunicode-table.h'),
-  ],
-)
-
-# bytecode to c source code for builtin and examples
-alias_target('codegen',
-  run_target(
-    'codegen_repl.c',
-    command: [
-      qjsc_exe,
-      '-ss',
-      '-o', files('gen/repl.c'),
-      '-m',
-      '-n', 'repl.js',
-      files('repl.js'),
-    ],
-  ),
-  run_target(
-    'codegen_standalone.c',
-    command: [
-      qjsc_exe,
-      '-ss',
-      '-o', files('gen/standalone.c'),
-      '-m',
-      '-n', 'standalone.js',
-      files('standalone.js'),
-    ],
-  ),
-  run_target(
-    'codegen_function_source.c',
-    command: [
-      qjsc_exe,
-      '-e',
-      '-o', files('gen/function_source.c'),
-      '-n', 'tests/function_source.js',
-      files('tests/function_source.js'),
-    ],
-  ),
-  run_target(
-    'codegen_hello.c',
-    command: [
-      qjsc_exe,
-      '-e',
-      '-o', files('gen/hello.c'),
-      '-n', 'examples/hello.js',
-      files('examples/hello.js'),
-    ],
-  ),
-  run_target(
-    'codegen_hello_module.c',
-    command: [
-      qjsc_exe,
-      '-e',
-      '-o', files('gen/hello_module.c'),
-      '-m',
-      '-n', 'examples/hello_module.js',
-      files('examples/hello_module.js'),
-    ],
-  ),
-  run_target(
-    'codegen_test_fib.c',
-    command: [
-      qjsc_exe,
-      '-e',
-      '-o', files('gen/test_fib.c'),
-      '-m',
-      '-n', 'examples/test_fib.js',
-      files('examples/test_fib.js'),
-    ],
-  ),
-  run_target(
-    'codegen_builtin-array-fromasync.h',
-    command: [
-      qjsc_exe,
-      '-C',
-      '-ss',
-      '-o', files('builtin-array-fromasync.h'),
-      '-n', 'builtin-array-fromasync.js',
-      files('builtin-array-fromasync.js'),
-    ],
-  ),
-)
 
 if examples.allowed()
   executable(
     'hello',
-    'gen/hello.c',
+    gen_hello_src,
     qjs_libc_srcs,
 
     c_args: qjs_c_args,
@@ -613,7 +724,7 @@ if examples.allowed()
 
   executable(
     'hello_module',
-    'gen/hello_module.c',
+    gen_hello_module_src,
     qjs_libc_srcs,
 
     c_args: qjs_c_args,
@@ -625,7 +736,7 @@ if examples.allowed()
   executable(
     'test_fib',
     'examples/fib.c',
-    'gen/test_fib.c',
+    gen_test_fib_src,
     qjs_libc_srcs,
 
     c_args: qjs_c_args,
