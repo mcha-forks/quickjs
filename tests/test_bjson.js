@@ -285,16 +285,17 @@ function bjson_test_bytecode()
 function bjson_test_fuzz()
 {
     var corpus = [
-        "EBAAAAAABGA=",
-        "EObm5oIt",
-        "EAARABMGBgYGBgYGBgYGBv////8QABEALxH/vy8R/78=",
+        "FRAAAAAABGA=",
+        "Febm5oIt",
+        "FQARABMGBgYGBgYGBgYGBv////8QABEALxH/vy8R/78=",
+        "FQAIfwAK/////3//////////////////////////////3/8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGAAAAAAAAAAAAAAD5+fn5+fn5+fn5+fkAAAAAAAYAqw==",
     ];
     for (var input of corpus) {
         var buf = base64decode(input);
         try {
             bjson.read(buf, 0, buf.byteLength);
         } catch (e) {
-            // okay, ignore
+            if (/invalid version/.test(e.message)) throw e; // corpus needs update
         }
     }
 }

@@ -79,7 +79,8 @@ codegen: $(QJSC)
 	$(QJSC) -e -o gen/function_source.c tests/function_source.js
 	$(QJSC) -e -o gen/hello.c examples/hello.js
 	$(QJSC) -e -o gen/hello_module.c -m examples/hello_module.js
-	$(QJSC) -e -o gen/test_fib.c -M examples/fib.so,fib -m examples/test_fib.js
+	$(QJSC) -e -o gen/test_fib.c -m examples/test_fib.js
+	$(QJSC) -C -ss -o builtin-array-fromasync.h builtin-array-fromasync.js
 
 debug:
 	BUILD_TYPE=Debug $(MAKE)
@@ -89,6 +90,23 @@ distclean:
 
 stats: $(QJS)
 	$(QJS) -qd
+
+jscheck: CFLAGS=-I. -D_GNU_SOURCE -DJS_CHECK_JSVALUE -Wall -Werror -fsyntax-only -c -o /dev/null
+jscheck:
+	$(CC) $(CFLAGS) api-test.c
+	$(CC) $(CFLAGS) ctest.c
+	$(CC) $(CFLAGS) fuzz.c
+	$(CC) $(CFLAGS) gen/function_source.c
+	$(CC) $(CFLAGS) gen/hello.c
+	$(CC) $(CFLAGS) gen/hello_module.c
+	$(CC) $(CFLAGS) gen/repl.c
+	$(CC) $(CFLAGS) gen/standalone.c
+	$(CC) $(CFLAGS) gen/test_fib.c
+	$(CC) $(CFLAGS) qjs.c
+	$(CC) $(CFLAGS) qjsc.c
+	$(CC) $(CFLAGS) quickjs-libc.c
+	$(CC) $(CFLAGS) quickjs.c
+	$(CC) $(CFLAGS) run-test262.c
 
 # effectively .PHONY because it doesn't generate output
 ctest: CFLAGS=-std=c11 -fsyntax-only -Wall -Wextra -Werror -pedantic
@@ -126,4 +144,4 @@ unicode_gen: $(BUILD_DIR)
 libunicode-table.h: unicode_gen
 	$(BUILD_DIR)/unicode_gen unicode $@
 
-.PHONY: all amalgam ctest cxxtest debug fuzz install clean codegen distclean stats test test262 test262-update test262-check microbench unicode_gen $(QJS) $(QJSC)
+.PHONY: all amalgam ctest cxxtest debug fuzz jscheck install clean codegen distclean stats test test262 test262-update test262-check microbench unicode_gen $(QJS) $(QJSC)

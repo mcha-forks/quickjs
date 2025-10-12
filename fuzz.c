@@ -2,7 +2,6 @@
 #include "quickjs.h"
 #include "quickjs.c"
 #include "cutils.c"
-#include "libbf.c"
 #include "libregexp.c"
 #include "libunicode.c"
 #include <stdlib.h>

@@ -578,20 +578,76 @@ function bigint256_arith(n)
     return bigint_arith(n, 256);
 }
 
-function set_collection_add(n)
+function map_set(n)
 {
     var s, i, j, len = 100;
-    s = new Set();
     for(j = 0; j < n; j++) {
+        s = new Map();
         for(i = 0; i < len; i++) {
-            s.add(String(i), i);
+            s.set(String(i), i);
         }
         for(i = 0; i < len; i++) {
             if (!s.has(String(i)))
-                throw Error("bug in Set");
+                throw Error("bug in Map");
         }
     }
     return n * len;
+}
+
+function map_delete(n)
+{
+    var a, i, j, len;
+
+    len = 1000;
+    for(j = 0; j < n; j++) {
+        a = new Map();
+        for(i = 0; i < len; i++) {
+            a.set(String(i), i);
+        }
+        for(i = 0; i < len; i++) {
+            a.delete(String(i));
+        }
+    }
+    return len * n;
+}
+
+function weak_map_set(n)
+{
+    var a, i, j, len, tab;
+
+    len = 1000;
+    tab = [];
+    for(i = 0; i < len; i++) {
+        tab.push({ key: i });
+    }
+    for(j = 0; j < n; j++) {
+        a = new WeakMap();
+        for(i = 0; i < len; i++) {
+            a.set(tab[i], i);
+        }
+    }
+    return len * n;
+}
+
+function weak_map_delete(n)
+{
+    var a, i, j, len, tab;
+
+    len = 1000;
+    for(j = 0; j < n; j++) {
+        tab = [];
+        for(i = 0; i < len; i++) {
+            tab.push({ key: i });
+        }
+        a = new WeakMap();
+        for(i = 0; i < len; i++) {
+            a.set(tab[i], i);
+        }
+        for(i = 0; i < len; i++) {
+            tab[i] = null;
+        }
+    }
+    return len * n;
 }
 
 function array_for(n)
@@ -652,6 +708,15 @@ function math_min(n)
         global_res = r;
     }
     return n * 1000;
+}
+
+function object_null(n)
+{
+    var j;
+    for(j = 0; j < n; j++) {
+        global_res = {__proto__: null};
+    }
+    return n;
 }
 
 function regexp_ascii(n)
@@ -730,6 +795,39 @@ function string_build4(n)
         global_res = r;
     }
     return n * 100;
+}
+
+function string_slice1(n)
+{
+    var i, j, s;
+    s = "x".repeat(1<<16);
+    for (i = 0; i < n; i++) {
+        for (j = 0; j < 1000; j++)
+            s.slice(-1); // too short for JSStringSlice
+    }
+    return n * 1000;
+}
+
+function string_slice2(n)
+{
+    var i, j, s;
+    s = "x".repeat(1<<16);
+    for (i = 0; i < n; i++) {
+        for (j = 0; j < 1000; j++)
+            s.slice(-1024);
+    }
+    return n * 1000;
+}
+
+function string_slice3(n)
+{
+    var i, j, s;
+    s = "x".repeat(1<<16);
+    for (i = 0; i < n; i++) {
+        for (j = 0; j < 1000; j++)
+            s.slice(1);
+    }
+    return n * 1000;
 }
 
 /* sort bench */
@@ -1034,17 +1132,24 @@ function main(argc, argv, g)
         closure_var,
         int_arith,
         float_arith,
-        set_collection_add,
+        map_set,
+        map_delete,
+        weak_map_set,
+        weak_map_delete,
         array_for,
         array_for_in,
         array_for_of,
         math_min,
+        object_null,
         regexp_ascii,
         regexp_utf16,
         string_build1,
         string_build2,
         //string_build3,
         //string_build4,
+        string_slice1,
+        string_slice2,
+        string_slice3,
         sort_bench,
         int_to_string,
         int_toString,
